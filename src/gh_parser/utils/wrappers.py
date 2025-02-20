@@ -37,7 +37,7 @@ def verbose_wrap(voutput: str):
                 verbose = False
             else:
                 verbose = self._verbose
-            
+
             if verbose:
                 if voutput not in VERBOSE_OUTPUTS:
                     VERBOSE_OUTPUTS.add(voutput)
@@ -50,11 +50,13 @@ def verbose_wrap(voutput: str):
     return decorator
 
 
-def func_wrap(attr: str = "", cls_obj: Any=None):
+def func_wrap(attr: str = "", cls_obj: Any = None):
     def decorator(func: Callable):
         @wraps(func)
         def wrapper(*args, **kwargs):
             ghp_cls = cls_obj(*args, **kwargs)
             return getattr(ghp_cls, attr)
+
         return wrapper
+
     return decorator

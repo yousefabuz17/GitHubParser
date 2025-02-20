@@ -1,4 +1,4 @@
-from .utils.parsers import ConfigFileParser, GitHubParser
+from .utils.parsers import APIParser, ConfigFileParser, GitHubParser
 from .utils.type_hints import Any, PathLike, Union
 from .utils.wrappers import func_wrap
 
@@ -10,7 +10,9 @@ def parse_url(**kwargs) -> Any:
     return GitHubParser.main_parser(**kwargs)
 
 
-def parse_config(config_file: PathLike, full_config: bool = True) -> Union[ConfigFileParser, dict]:
+def parse_config(
+    config_file: PathLike, full_config: bool = True
+) -> Union[ConfigFileParser, dict]:
     cfg = ConfigFileParser(config_file)
     return [cfg, cfg.config][full_config]
 
@@ -44,8 +46,9 @@ def get_path_contents(*args, **kwargs) -> str:
     return GitHubParser(*args, **kwargs).get_path_contents(path=path)
 
 
-__all__ = tuple(
-    k
-    for k in globals()
-    if k.startswith(("get", "parse"))
+__all__ = tuple(k for k in globals() if k.startswith(("get", "parse"))) + \
+    (
+    "APIParser",
+    "ConfigFileParser",
+    "GitHubParser",
 )

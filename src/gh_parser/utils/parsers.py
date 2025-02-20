@@ -18,13 +18,7 @@ from pathlib import Path
 
 from .exceptions import APIException, GHException
 from .type_hints import PathLike
-from .utils import (
-    _Repr,
-    decode_string,
-    executor,
-    get_parameters,
-    str_instance
-)
+from .utils import _Repr, decode_string, executor, get_parameters, str_instance
 from .wrappers import time_wrap, verbose_wrap
 
 
@@ -211,7 +205,7 @@ class GitHubParser(APIParser):
 
         if not self._owner:
             raise GHException("The owner of the repository must be provided.")
-        
+
         if not isinstance(self._headers, dict):
             raise GHException(
                 f"The headers must be a dictionary, not {type(self._headers).__name__}."
@@ -221,7 +215,7 @@ class GitHubParser(APIParser):
         api_parser = partial(self.main_parser, headers=self._headers)
         url = self.MAIN_API.format(owner=self._owner, repo=self._repo)
         main_stats = api_parser(url=url)
-        
+
         if main_stats:
             stats = (
                 (k, v)
@@ -382,30 +376,31 @@ class GitHubParser(APIParser):
         get_contents = kwargs.pop("get_contents", True)
         response = cls.__call__(*args, **kwargs)
         return [response, response.api_contents][get_contents]
-    
+
     @classmethod
-    def rate_limit(cls, key: str=None):
+    def rate_limit(cls, key: str = None):
         url = cls.joinurl(cls.GITHUB_API, "rate_limit")
         response = cls.main_parser(url=url)
-        
+
         if key is None:
             return response
-        
-        main_keys, inner_keys = map(lambda k: tuple(k.keys()), (response, next(iter(response.values()))))
+
+        main_keys, inner_keys = map(
+            lambda k: tuple(k.keys()), (response, next(iter(response.values())))
+        )
         all_keys = tuple(chain.from_iterable((main_keys, inner_keys)))
-        
+
         if key not in all_keys:
             raise GHException(
                 f"The provided key {key!r} is not a valid option."
                 f"\nAvailable keys are: {all_keys}"
             )
-        
+
         if key in main_keys:
             return response[key]
         elif key in inner_keys:
             r = lambda x: response[main_keys[x]].get(key)
             return next(filter(bool, map(r, (0, 1))))
-        
 
     @cached_property
     def branch(self) -> str:

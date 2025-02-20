@@ -6,5 +6,8 @@ from .src.gh_parser.gh_parser import (
     get_rate_limit,
     get_repo_stats,
     parse_config,
-    parse_url
+    parse_url,
+    APIParser,
+    ConfigFileParser,
+    GitHubParser
 )
