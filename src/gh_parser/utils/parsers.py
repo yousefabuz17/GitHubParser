@@ -9,14 +9,15 @@ from aiohttp.client_exceptions import (
     InvalidURL,
 )
 from async_lru import alru_cache
-from collections import OrderedDict
+from collections import namedtuple, OrderedDict
 from configparser import ConfigParser
 from functools import cache, cached_property, partial
 from itertools import chain
 from pathlib import Path
 
 
-from .exceptions import APIException, GHException
+from .endpoints import OTHER_ENDPOINTS
+from .exceptions import APIException, ConfigException, GHException
 from .type_hints import PathLike
 from .utils import _Repr, decode_string, executor, get_parameters, str_instance
 from .wrappers import time_wrap, verbose_wrap
@@ -24,18 +25,43 @@ from .wrappers import time_wrap, verbose_wrap
 
 # region ConfigFileParser
 class ConfigFileParser(ConfigParser):
+    __slots__: dict = ("_config", "_cf", "_df", "_enhance")
+
     def __init__(self, config_file: PathLike, *args, **kwargs):
         self._config = None
-        self._cf = config_file
-        self._df = kwargs.get("default_section", None)
+        self._cf = self._validate_cf(config_file)
+        self._df = kwargs.get("default_section")
+        self._enhance = kwargs.pop("enhance", False)
         super().__init__(*args, **kwargs)
+
+    def _validate_cf(self, cf: PathLike) -> Path:
+        cf = Path(cf).absolute().resolve()
+        if not cf.exists():
+            raise ConfigException(
+                f"Configuration file not found: {cf!r}."
+                f"\nEnsure the file path is correct and that the file exists in the specified location."
+            )
+        return cf
 
     def _read_cf(self):
         self.read(self._cf)
 
-    @staticmethod
-    def _format_cf(cf_dict):
-        cf = {k.lower(): {h: s for h, s in v.items()} for k, v in cf_dict.items()}
+    @classmethod
+    def _format_cf(cls, cf_dict, *, enhance: bool = False):
+        match enhance:
+            case False:
+                cf = {k: {**v} for k, v in cf_dict.items()}
+            case True:
+                _pnt = partial(namedtuple, rename=True)
+                main_name = cls.__name__.removesuffix("Parser")
+                OuterNT = _pnt(main_name, field_names=(*cf_dict,))
+
+                nts = {
+                    k: _pnt(k, field_names=(*v,))(*v.values())
+                    for k, v in cf_dict.items()
+                }
+
+                cf = OuterNT(**nts)
         return cf
 
     def _get_config(self):
@@ -45,12 +71,12 @@ class ConfigFileParser(ConfigParser):
         if self._df is None:
             del cf["DEFAULT"]
 
-        new_cf = self._format_cf(cf)
+        new_cf = self._format_cf(cf, enhance=self._enhance)
         return new_cf
 
     @cached_property
     def config_path(self) -> Path:
-        return Path(self._cf).absolute().resolve()
+        return self._cf
 
     @cached_property
     def config(self) -> dict:
@@ -147,11 +173,21 @@ class GitHubParser(APIParser):
     REPO_URL: str = GITHUB_API + "/users/{owner}/repos"
     SOURCE_URL: str = MAIN_API + "/contents/{path}?ref={branch}"
     TREE_URL: str = MAIN_API + "/git/trees/{branch}?recursive=1"
-
+    OTHER_ENDPOINTS: tuple[str, ...]
     MAIN_HEADERS: dict = {
         "Accept": "application/vnd.github.v3+json",
         "Authorization": "",
     }
+
+    __slots__: tuple[str, ...] = (
+        "_owner",
+        "_repo",
+        "_branch",
+        "_token",
+        "_include_empty_files",
+        "_verbose",
+        "_headers",
+    )
 
     def __init__(
         self,
@@ -159,7 +195,6 @@ class GitHubParser(APIParser):
         repo: str = "",
         branch: str = "main",
         token: str = "",
-        headers: dict = None,
         include_empty_files: bool = False,
         verbose=False,
     ):
@@ -173,13 +208,7 @@ class GitHubParser(APIParser):
         self._empty_files = include_empty_files
         self._verbose = verbose
 
-        # Dict Arguments
-        self._headers = headers or self.MAIN_HEADERS
-
         self._validate_args()
-
-        if self._token and not self._headers.get("Authorization"):
-            self.MAIN_HEADERS.update({"Authorization": self._token})
 
         super().__init__(headers=self._headers, json_format=True)
 
@@ -206,67 +235,44 @@ class GitHubParser(APIParser):
         if not self._owner:
             raise GHException("The owner of the repository must be provided.")
 
-        if not isinstance(self._headers, dict):
-            raise GHException(
-                f"The headers must be a dictionary, not {type(self._headers).__name__}."
-            )
+        self._token = "token " + self._token.removeprefix("token ")
+        self._headers = self.MAIN_HEADERS
+
+        if self._token:
+            self._headers.update({"Authorization": self._token})
 
     def _get_repo_stats(self):
         api_parser = partial(self.main_parser, headers=self._headers)
         url = self.MAIN_API.format(owner=self._owner, repo=self._repo)
         main_stats = api_parser(url=url)
+        OTHER_ENDPOINTS = self.OTHER_ENDPOINTS
 
-        if main_stats:
-            stats = (
-                (k, v)
-                for k, v in main_stats.items()
-                if k.endswith("count") or k == "description"
-            )
-        else:
+        if not main_stats:
             raise GHException(
                 f"Unable to fetch repository statistics for "
                 f"{self._owner + '/' + self._repo!r}."
             )
 
-        other_endpoints = (
-            "branches",
-            "commits",
-            "forks",
-            "hooks",
-            "issues",
-            "keys",
-            "milestones",
-            "pulls",
-            "releases",
-            "stargazers",
-            "tags",
-            "actions/workflows",
-            "community_profile",
-            "discussions",
-            "secret-scanning/alerts",
-            "stats/code_frequency",
-            "stats/commit_activity",
-            "stats/contributors",
-            "stats/participation",
-            "traffic/clones",
-            "traffic/views",
+        stats = (
+            (k, v)
+            for k, v in main_stats.items()
+            if k.endswith("count") or k == "description"
         )
 
         def _format_endpoint(endp):
-            e = next((i for i in other_endpoints if i.endswith(endp)), "")
+            e = next((i for i in OTHER_ENDPOINTS if i.endswith(endp)), "")
             return "-".join(Path(endp).parts[-2:]) if e else endp
 
-        other_urls = (self.joinurl(url, i) for i in other_endpoints)
+        other_urls = (self.joinurl(url, i) for i in OTHER_ENDPOINTS)
         other_exec = executor(lambda u: api_parser(url=u), other_urls)
-        other_stats = zip(map(_format_endpoint, other_endpoints), other_exec)
+        other_stats = zip(map(_format_endpoint, OTHER_ENDPOINTS), other_exec)
         full_stats = chain.from_iterable((stats, other_stats))
         return _Repr(full_stats)
 
     def _main_gh_api(self) -> dict:
         url = self.REPO_URL.format(owner=self._owner)
         response = self.main_parser(url=url, headers=self._headers)
-        if response:
-            return response
+        return response
 
     @verbose_wrap("Fetching main repository tree.")
     def _main_repotree(self) -> dict:
@@ -274,8 +280,7 @@ class GitHubParser(APIParser):
             owner=self._owner, repo=self._repo, path="", branch=self._branch
         )
         response = self.main_parser(url=url, headers=self._headers)
-        if response:
-            return response
+        return response
 
     @verbose_wrap("Fetching repository contents from main GitHub API.")
     def _get_repositories(self):
@@ -295,7 +300,9 @@ class GitHubParser(APIParser):
 
         def not_hidden(p):
             valid_p = Path(p).parts[-1]
-            return valid_p if not valid_p.startswith(".") else None
+            if valid_p.startswith(".") and not self._include_empty_files:
+                return
+            return valid_p
 
         if main_tree:
             tree = main_tree.get("tree")
@@ -382,9 +389,11 @@ class GitHubParser(APIParser):
         url = cls.joinurl(cls.GITHUB_API, "rate_limit")
         response = cls.main_parser(url=url)
 
-        if key is None:
+        if key is None or not str_instance(key):
             return response
-
+        
+        key = key.lower()
+        
         main_keys, inner_keys = map(
             lambda k: tuple(k.keys()), (response, next(iter(response.values())))
         )
@@ -395,8 +404,7 @@ class GitHubParser(APIParser):
                 f"The provided key {key!r} is not a valid option."
                 f"\nAvailable keys are: {all_keys}"
             )
-
-        if key in main_keys:
+        elif key in main_keys:
             return response[key]
         elif key in inner_keys:
             r = lambda x: response[main_keys[x]].get(key)
