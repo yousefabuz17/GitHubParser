@@ -1,6 +1,8 @@
 from .src.gh_parser.gh_parser import (
     get_all_repopaths,
     get_all_repos,
+    get_main_page,
+    get_metadata,
     get_full_branch,
     get_path_contents,
     get_rate_limit,
