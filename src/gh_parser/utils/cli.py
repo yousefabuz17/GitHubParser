@@ -4,6 +4,7 @@ from .type_hints import Iterable
 from .utils import diff_set, get_parameters
 from ..gh_parser import (
     get_metadata,
+    get_main_page,
     get_parser,
     get_rate_limit,
     get_all_repos,
@@ -16,7 +17,9 @@ from ..gh_parser import (
 
 
 def cli_parser():
-    arg_parser = ArgumentParser(description="")
+    """The CLI parser for the `gh_parser` package."""
+
+    arg_parser = ArgumentParser(description="GitHub API Parser CLI.")
     sub_parsers = arg_parser.add_subparsers(dest="command", help="All Command Options.")
 
     def _add_args(parser):
@@ -37,7 +40,7 @@ def cli_parser():
             raise ArgumentTypeError("'--kwargs' must be provided.")
         except ValueError:
             raise ArgumentTypeError(
-                "Invalid key-value pair format." " Expected 'key=value'."
+                "Invalid key-value pair format. Expected 'key=value'."
             )
 
         if _bad_kwds := diff_set(fixed_kwds, parser_kwargs):
@@ -57,24 +60,38 @@ def cli_parser():
     main_args("--verbose", help="Enable verbose output.")
     main_args("--metadata", help="Retrieve the full metadata contents of 'gh_parser'.")
 
-    parseurl = sub_parsers.add_parser("parse-url", description="", help="")
-    parser_kwargs = parseurl.add_argument("--kwargs", nargs="*")
-
-    getrt_limit = sub_parsers.add_parser("rate-limit", description="", help="")
+    getrt_limit = sub_parsers.add_parser(
+        "rate-limit",
+        description="Get current GitHub API rate limit",
+        help="No arguments required.",
+    )
     getrt_args = _add_args(getrt_limit)
-    getrt_args("-k", help="")
+    getrt_args("-k", help="Specify the key to retrieve the rate limit data.")
 
-    repostats = sub_parsers.add_parser("repo-stats", description="", help="")
-    repostats_kwargs = repostats.add_argument("--kwargs", nargs="*")
+    def _common_parsers(args):
+        command_key, descr, *_help = args
+        _help = "" if not _help else _help
+        cparser = sub_parsers.add_parser(command_key, description=descr, help=_help)
+        cparser_kwargs = cparser.add_argument("--kwargs", nargs="*")
 
-    repopaths = sub_parsers.add_parser("repo-paths", description="", help="")
-    repopaths_kwargs = repopaths.add_argument("--kwargs", nargs="*")
-
-    all_repos = sub_parsers.add_parser("all-repos", description="", help="")
-    allrepos_kwargs = all_repos.add_argument("--kwargs", nargs="*")
-
-    full_branch = sub_parsers.add_parser("full-branch", description="", help="")
-    branch_kwargs = full_branch.add_argument("--kwargs", nargs="*")
+    (
+        *map(
+            _common_parsers,
+            (
+                ("main-page", "Get the main page for the specified owner."),
+                ("repo-stats", "Get the stats for the specified repo."),
+                ("repo-paths", "Get all the paths for the specified repo."),
+                ("all-repos", "Get all the repos for the specified user."),
+                ("full-branch", "Get the full branch data for the specified owner."),
+                ("path-contents", "Get the contents of the specified path."),
+                (
+                    "parse-url",
+                    "Parse URL or APIs.",
+                    "Retrieve the parsed URL or API data.",
+                ),
+            ),
+        ),
+    )
 
     args = arg_parser.parse_args()
     metadata = get_metadata(enhance=False)
@@ -90,21 +107,22 @@ def cli_parser():
 
     if command == "rate-limit":
         return get_rate_limit(key=args.k)
-    
+
     command_mapping = (
+        ("main-page", get_main_page),
         ("parse-url", parse_url),
         ("repo-stats", get_repo_stats),
         ("repo-paths", get_all_repopaths),
         ("all-repos", get_all_repos),
         ("full-branch", get_full_branch),
-        ("path-contents", get_path_contents)
+        ("path-contents", get_path_contents),
     )
 
     other_command = next((k for k in command_mapping if command in k), None)
 
     if other_command:
         command_key, command_function = other_command
-        parser = apiparser if command_key == "parse-url" else gh_parser
+        parser = (gh_parser, apiparser)[command_key == "parse-url"]
         fixed_kwargs = _split_kwargs(parser, args.kwargs)
         return command_function(**fixed_kwargs)
 

@@ -7,21 +7,38 @@ from .type_hints import Any, Callable, Generator, Union
 
 
 class _Repr(dict):
+    """
+    A custom dictionary class that overrides the `__repr__` method.
+
+    ### Methods:
+        - `_format_value`: Format the string object.
+        - `__repr__`: Return the string representation of the dictionary.
+
+    ### Usage:
+        ```python
+        r = _Repr({"a": 1, "b": {"c": 2, "d": 3}})
+        print(r)
+
+        # Output:
+        {'a': <int>, 'b': {'c': <int>, 'd': <int>}}
+        ```
+    """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def _str_format(self, str_obj) -> str:
+    def _format_value(self, str_obj) -> str:
         return f"<{type(str_obj).__name__}>"
 
     def __repr__(self) -> str:
         return f"""{
             {
                 k: {
-                    m: self._str_format(n)
+                    m: self._format_value(n)
                     for m, n in v.items()
                 }
                 if isinstance(v, dict)
-                else self._str_format(v)
+                else self._format_value(v)
                 for k, v in self.items()
             }
         }"""

@@ -50,7 +50,7 @@ def verbose_wrap(voutput: str):
     return decorator
 
 
-def func_wrap(attr: str = "", cls_obj: Any = None):
+def func_wrap(attr: str, cls_obj: Any):
     def decorator(func: Callable):
         @wraps(func)
         def wrapper(*args, **kwargs):
