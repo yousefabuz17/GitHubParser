@@ -32,7 +32,7 @@ Here's an example of how you can use `GitHubParser` to fetch statistics for a Gi
 from gh_parser import GitHubParser
 
 # Create an instance of GitHubParser
-parser = GitHubParser(username='your_username', token='your_token')
+parser = GitHubParser(owner='<owner>', token='<github_token>')
 # Alternatively, you can provide your credentials in a configuration file
 parser = GitHubParser(config_file='config.ini')
 
