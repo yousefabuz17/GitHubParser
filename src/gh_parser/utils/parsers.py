@@ -52,10 +52,10 @@ class ConfigFileParser(ConfigParser):
             case False:
                 cf = {k: {**v} for k, v in cf_dict.items()}
             case True:
+                cf_dict = {k.replace(".", "_"): v for k, v in cf_dict.items()}
                 _pnt = partial(namedtuple, rename=True)
                 main_name = cls.__name__.removesuffix("Parser")
                 OuterNT = _pnt(main_name, field_names=(*cf_dict,))
-
                 nts = {
                     k: _pnt(k, field_names=(*v,))(*v.values())
                     for k, v in cf_dict.items()
@@ -92,6 +92,7 @@ class APIParser:
     def __init__(
         self,
         url: str = "",
+        *,
         endpoint: str = "",
         headers: dict = None,
         json_format: bool = False,
@@ -173,7 +174,7 @@ class GitHubParser(APIParser):
     REPO_URL: str = GITHUB_API + "/users/{owner}/repos"
     SOURCE_URL: str = MAIN_API + "/contents/{path}?ref={branch}"
     TREE_URL: str = MAIN_API + "/git/trees/{branch}?recursive=1"
-    OTHER_ENDPOINTS: tuple[str, ...]
+    OTHER_ENDPOINTS: tuple[str, ...] = OTHER_ENDPOINTS
     MAIN_HEADERS: dict = {
         "Accept": "application/vnd.github.v3+json",
         "Authorization": "",
@@ -191,27 +192,39 @@ class GitHubParser(APIParser):
 
     def __init__(
         self,
-        owner: str,
+        *,
+        config_file: PathLike = "",
+        owner: str = "",
         repo: str = "",
         branch: str = "main",
         token: str = "",
         include_empty_files: bool = False,
         verbose=False,
     ):
+        if config_file:
+            main_keys = ("owner", "token", "repo", "branch")
+            parsed_config = ConfigFileParser(config_file, enhance=True).config
+            github_section = parsed_config.github
+            owner, token, repo, branch = map(
+                lambda key: getattr(github_section, key, ""), main_keys
+            )
+
         # String Arguments
         self._owner = owner
+        self._token = token
         self._repo = repo
         self._branch = branch
-        self._token = token
 
         # Boolean Arguments
         self._empty_files = include_empty_files
         self._verbose = verbose
 
+        # Validate Arguments
         self._validate_args()
 
         super().__init__(headers=self._headers, json_format=True)
 
+        # Cached Properties
         self._repos = None
         self._repopaths = None
         self._repo_stats = None
@@ -222,6 +235,10 @@ class GitHubParser(APIParser):
         kwargs.update({"headers": cls.MAIN_HEADERS, "json_format": True})
         parent_parser = cls.__bases__[0]
         return parent_parser(*args, **kwargs)
+
+    @staticmethod
+    def _clean_token(token: str) -> str:
+        return "token " + token.removeprefix("token ")
 
     @verbose_wrap("Validating Arguments.")
     def _validate_args(self):
@@ -235,7 +252,7 @@ class GitHubParser(APIParser):
         if not self._owner:
             raise GHException("The owner of the repository must be provided.")
 
-        self._token = "token " + self._token.removeprefix("token ")
+        self._token = self._clean_token(self._token)
         self._headers = self.MAIN_HEADERS
 
         if self._token:
@@ -391,11 +408,11 @@ class GitHubParser(APIParser):
 
         if key is None or not str_instance(key):
             return response
-        
+
         key = key.lower()
-        
+
         main_keys, inner_keys = map(
-            lambda k: tuple(k.keys()), (response, next(iter(response.values())))
+            lambda k: (*k.keys(),), (response, next(iter(response.values())))
         )
         all_keys = tuple(chain.from_iterable((main_keys, inner_keys)))
 

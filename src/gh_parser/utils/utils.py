@@ -1,5 +1,6 @@
 import base64
 import inspect
+import operator
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
 from .type_hints import Any, Callable, Generator, Union
@@ -54,3 +55,7 @@ def executor(func: Callable = None, *args, **kwargs) -> Union[Any, Generator]:
 
 def yield_executor(__executor) -> Generator:
     yield from __executor
+
+
+def diff_set(*args):
+    return operator.sub(*map(set, args))

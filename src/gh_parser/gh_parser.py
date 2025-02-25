@@ -1,5 +1,5 @@
 from .utils.parsers import APIParser, ConfigFileParser, GitHubParser
-from .utils.type_hints import Any, PathLike, Union
+from .utils.type_hints import Any, LiteralInt, PathLike, Union
 from .utils.wrappers import func_wrap
 
 
@@ -11,10 +11,15 @@ def parse_url(**kwargs) -> Any:
 
 
 def parse_config(
-    config_file: PathLike, full_config: bool = True, *args, **kwargs
+    config_file: PathLike, *args, **kwargs
 ) -> Union[ConfigFileParser, dict]:
+    parser_only = kwargs.pop("parser_only", False)
     cfg = ConfigFileParser(config_file, *args, **kwargs)
-    return [cfg, cfg.config][full_config]
+    return [cfg.config, cfg][parser_only]
+
+
+def get_parser(index: LiteralInt):
+    return (APIParser, ConfigFileParser, GitHubParser)[index]
 
 
 def get_rate_limit(key: str = None) -> Union[dict, int]:
@@ -22,28 +27,37 @@ def get_rate_limit(key: str = None) -> Union[dict, int]:
 
 
 @func_wrapper("full_stats")
-def get_repo_stats(*args, **kwargs) -> dict:
+def get_repo_stats(**kwargs) -> dict:
     pass
 
 
 @func_wrapper("all_repos")
-def get_all_repos(*args, **kwargs) -> dict:
+def get_all_repos(**kwargs) -> dict:
     pass
 
 
 @func_wrapper("all_repopaths")
-def get_all_repopaths(*args, **kwargs) -> dict:
+def get_all_repopaths(**kwargs) -> dict:
     pass
 
 
 @func_wrapper("full_branch")
-def get_full_branch(*args, **kwargs) -> dict:
+def get_full_branch(**kwargs) -> dict:
     pass
 
 
-def get_path_contents(*args, **kwargs) -> str:
+def get_path_contents(**kwargs) -> str:
     path = kwargs.pop("path", None)
-    return GitHubParser(*args, **kwargs).get_path_contents(path=path)
+    return GitHubParser(**kwargs).get_path_contents(path=path)
+
+
+def get_metadata(enhance: bool = True):
+    parser = parse_config("setup.cfg", enhance=enhance)
+    if enhance:
+        metadata = parser.metadata
+    else:
+        metadata = parser["metadata"]
+    return metadata
 
 
 __all__ = tuple(k for k in globals() if k.startswith(("get", "parse"))) + (

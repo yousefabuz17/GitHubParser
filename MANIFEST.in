@@ -1,0 +1,14 @@
+# Include documentation and licensing
+include README.md
+include LICENSE.md
+
+# Include source code
+recursive-include src *.py
+recursive-include src/gh_parser *.py
+recursive-include src/gh_parser/utils *.py
+
+# Include tests
+recursive-include tests *.py
+
+# Exclude unwanted files
+global-exclude __pycache__ *.pyc *.pyo
